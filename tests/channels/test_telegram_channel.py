@@ -233,6 +233,32 @@ async def test_start_respects_custom_pool_config(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_start_registers_static_script_commands(monkeypatch) -> None:
+    _FakeHTTPXRequest.clear()
+    config = TelegramConfig(
+        enabled=True,
+        token="123:abc",
+        allow_from=["*"],
+    )
+    bus = MessageBus()
+    fake_commands = [SimpleNamespace(command="stock", description="Stock")]
+    monkeypatch.setattr("nanobot.channels.telegram.load_script_commands", lambda: fake_commands)
+    channel = TelegramChannel(config, bus)
+    app = _FakeApp(lambda: setattr(channel, "_running", False))
+    builder = _FakeBuilder(app)
+
+    monkeypatch.setattr("nanobot.channels.telegram.HTTPXRequest", _FakeHTTPXRequest)
+    monkeypatch.setattr(
+        "nanobot.channels.telegram.Application",
+        SimpleNamespace(builder=lambda: builder),
+    )
+
+    await channel.start()
+
+    assert any(cmd.command == "stock" for cmd in app.bot.commands)
+
+
+@pytest.mark.asyncio
 async def test_send_text_retries_on_timeout() -> None:
     """_send_text retries on TimedOut before succeeding."""
     from telegram.error import TimedOut

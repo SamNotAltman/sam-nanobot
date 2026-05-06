@@ -10,6 +10,7 @@ from contextlib import suppress
 from nanobot import __version__
 from nanobot.bus.events import OutboundMessage
 from nanobot.command.router import CommandContext, CommandRouter
+from nanobot.command.script_commands import build_script_help_lines, register_script_commands
 from nanobot.utils.helpers import build_status_content
 from nanobot.utils.restart import set_restart_notice_to_env
 
@@ -380,6 +381,9 @@ def build_help_text() -> str:
     """Build canonical help text shared across channels."""
     lines = [
         "🐈 nanobot commands:",
+    ]
+    lines.extend(build_script_help_lines())
+    lines.extend([
         "/new — Stop current task and start a new conversation",
         "/stop — Stop the current task",
         "/restart — Restart the bot",
@@ -389,7 +393,7 @@ def build_help_text() -> str:
         "/dream-log — Show what the last Dream changed",
         "/dream-restore — Revert memory to a previous state",
         "/help — Show available commands",
-    ]
+    ])
     return "\n".join(lines)
 
 
@@ -408,3 +412,4 @@ def register_builtin_commands(router: CommandRouter) -> None:
     router.exact("/dream-restore", cmd_dream_restore)
     router.prefix("/dream-restore ", cmd_dream_restore)
     router.exact("/help", cmd_help)
+    register_script_commands(router)

@@ -29,6 +29,7 @@ from nanobot.bus.events import OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel
 from nanobot.command.builtin import build_help_text
+from nanobot.command.script_commands import load_script_commands
 from nanobot.config.paths import get_media_dir
 from nanobot.config.schema import Base
 from nanobot.security.network import validate_url_target
@@ -286,6 +287,7 @@ class TelegramChannel(BaseChannel):
         self._bot_user_id: int | None = None
         self._bot_username: str | None = None
         self._stream_bufs: dict[str, _StreamBuf] = {}  # chat_id -> streaming state
+        self._script_commands = load_script_commands()
 
     def is_allowed(self, sender_id: str) -> bool:
         """Preserve Telegram's legacy id|username allowlist matching."""
@@ -316,6 +318,16 @@ class TelegramChannel(BaseChannel):
         if content == "/dream_restore" or content.startswith("/dream_restore "):
             return content.replace("/dream_restore", "/dream-restore", 1)
         return content
+
+    @staticmethod
+    def _command_regex(*commands: str) -> str:
+        escaped = "|".join(re.escape(cmd) for cmd in commands if cmd)
+        return rf"^/({escaped})(?:@\w+)?(?:\s+.*)?$"
+
+    def _bot_commands(self) -> list[BotCommand]:
+        commands = [BotCommand(cmd.command, cmd.description) for cmd in self._script_commands]
+        commands.extend(self.BOT_COMMANDS)
+        return commands
 
     async def start(self) -> None:
         """Start the Telegram bot with long polling."""
@@ -355,16 +367,23 @@ class TelegramChannel(BaseChannel):
         self._app.add_handler(MessageHandler(filters.Regex(r"^/start(?:@\w+)?$"), self._on_start))
         self._app.add_handler(
             MessageHandler(
-                filters.Regex(r"^/(new|stop|restart|status|dream)(?:@\w+)?(?:\s+.*)?$"),
+                filters.Regex(self._command_regex("new", "stop", "restart", "status", "dream")),
                 self._forward_command,
             )
         )
         self._app.add_handler(
             MessageHandler(
-                filters.Regex(r"^/(dream-log|dream_log|dream-restore|dream_restore)(?:@\w+)?(?:\s+.*)?$"),
+                filters.Regex(self._command_regex("dream-log", "dream_log", "dream-restore", "dream_restore")),
                 self._forward_command,
             )
         )
+        if self._script_commands:
+            self._app.add_handler(
+                MessageHandler(
+                    filters.Regex(self._command_regex(*[cmd.command for cmd in self._script_commands])),
+                    self._forward_command,
+                )
+            )
         self._app.add_handler(MessageHandler(filters.Regex(r"^/help(?:@\w+)?$"), self._on_help))
 
         # Add message handler for text, photos, video, voice, documents, and locations
@@ -399,7 +418,7 @@ class TelegramChannel(BaseChannel):
         logger.info("Telegram bot @{} connected", bot_info.username)
 
         try:
-            await self._app.bot.set_my_commands(self.BOT_COMMANDS)
+            await self._app.bot.set_my_commands(self._bot_commands())
             logger.debug("Telegram bot commands registered")
         except Exception as e:
             logger.warning("Failed to register bot commands: {}", e)

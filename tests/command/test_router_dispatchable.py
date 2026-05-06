@@ -8,6 +8,7 @@ import pytest
 
 from nanobot.command.builtin import register_builtin_commands
 from nanobot.command.router import CommandContext, CommandRouter
+from nanobot.command.script_commands import register_script_commands
 
 
 class TestIsDispatchableCommand:
@@ -51,6 +52,20 @@ class TestIsDispatchableCommand:
     def test_unknown_slash_command_not_matched(self, router: CommandRouter) -> None:
         assert not router.is_dispatchable_command("/unknown")
         assert not router.is_dispatchable_command("/foo bar")
+
+    def test_script_commands_match_exact_and_prefix(self, tmp_path) -> None:
+        script = tmp_path / "hello.py"
+        script.write_text("print('hello')\n", encoding="utf-8")
+        config = tmp_path / "telegram_script_commands.json"
+        config.write_text(
+            '{"commands": [{"command": "stock", "script": "%s", "description": "Stock"}]}' % script,
+            encoding="utf-8",
+        )
+        custom = CommandRouter()
+        register_script_commands(custom, path=config)
+
+        assert custom.is_dispatchable_command("/stock")
+        assert custom.is_dispatchable_command("/stock abc")
 
 
 class TestMidTurnCommandDispatchedDirectly:
